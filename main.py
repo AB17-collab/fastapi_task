@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from typing import Optional
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -18,3 +19,16 @@ def read_item(item_id: int, item: Optional[str] = None, free: Optional[str] = No
 @app.get("/status")
 def get_status():
     return {"status": "API is running smoothly"}
+
+class Student(BaseModel):
+    name: str
+    age: int
+    roll: int
+
+@app.post("/create_student")
+def create_student(student: Student):   
+    return {
+        "name": student.name,
+        "age": student.age,
+        "roll": student.roll
+    }
