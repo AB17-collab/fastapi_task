@@ -4,7 +4,8 @@ import models, schemas, utils
 from auth_database import get_db
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from jose import JWTError
 
 SECRET_KEY = "KOz1eTcTi93n0Z5rMTH0M63UEZ6nPztLzXKo75h922k"
 ALGORITHM = "HS256"
@@ -55,4 +56,44 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        role: str = payload.get("role")
+        if username is None or role is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    
+    return {"username": username, "role": role}
 
+@app.get("/protected")
+def protected_route(current_user: dict = Depends(get_current_user)):
+    return {"message": f"Hello, {current_user['username']}! You have access to this protected route."}
+
+def require_role(allowed_roles: list[str]):
+    def role_checker(current_user: dict = Depends(get_current_user)):
+        if current_user['role'] not in allowed_roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this resource")
+        return current_user
+    return role_checker
+
+
+@app.get("/profile")
+def profile(current_user: dict = Depends(require_role(["user", "admin"]))):
+    return {"message": f"Profile of {current_user['username']} ({current_user['role']})"}
+
+@app.get("/user/dashboard")
+def user_dashboard(current_user: dict = Depends(require_role(["user"]))):
+    return {"message": f"Welcome to the user dashboard, {current_user['username']}!"}
+
+@app.get("/admin/dashboard")
+def admin_dashboard(current_user: dict = Depends(require_role(["admin"]))):
+    return {"message": f"Welcome to the admin dashboard, {current_user['username']}!"}
